@@ -1,6 +1,6 @@
 services:
   app:
-    image: node:latest
+    image: node:iron-alpine
     environment:
       PGUSER: postgres
       PGPASSWORD: password

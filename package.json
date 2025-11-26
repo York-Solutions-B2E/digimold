@@ -8,9 +8,11 @@
     "main": "index.js",
     "scripts": {
         "test": "node index.js",
-        "start": "node index.js"
+        "start": "ash build.sh"
     },
     "dependencies": {
+        "@xterm/xterm": "^5.5.0",
+        "express": "^5.1.0",
         "pg": "^8.16.3"
     }
 }
