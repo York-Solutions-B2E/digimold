@@ -1,0 +1,45 @@
+services:
+  app:
+    image: node:latest
+    environment:
+      PGUSER: postgres
+      PGPASSWORD: password
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: mold
+    working_dir: /app
+    command: npm run start
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+    networks:
+      - moldynet
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: mold
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - moldypgdata:/var/lib/postgresql
+    networks:
+      - moldynet
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "postgres", "-d", "mold" ]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+networks:
+  moldynet:
+    driver: bridge
+
+volumes:
+  moldypgdata:
+      
