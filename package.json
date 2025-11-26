@@ -1,0 +1,15 @@
+{
+  "name": "digimold",
+  "version": "1.0.0",
+  "description": "A postgres test with whimsy",
+  "license": "MIT",
+  "author": "Joseph Cramsey",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "node index.js"
+  },
+  "dependencies": {
+    "postgres": "^3.4.7"
+  }
+}
