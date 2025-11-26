@@ -58,6 +58,25 @@ CREATE TABLE IF NOT EXISTS users (
 );
 `.trim());
 
+    const WebSocket = require('ws');
+    const wss = new WebSocket.Server({ port: 8080 });
+
+    wss.on('connection', async (ws) => {
+        console.log('New client connected');
+
+        // For storing miscellaneous metadata about the connection
+        const clientProfile = {};
+
+        ws.on('message', async (message) => {
+            const response = await handleClientPacket(client, clientProfile, JSON.parse(message));
+            if (response) ws.send(JSON.stringify(response));
+        });
+
+        ws.on('close', () => {
+            console.log('Client disconnected');
+        });
+    });
+
     // Await some exit condition
     while (!needsToExit) {
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -67,3 +86,7 @@ CREATE TABLE IF NOT EXISTS users (
     await client.end();
     process.exit(0);
 })();
+
+async function handleClientPacket(sql, client, packet) {
+    //
+}
