@@ -95,7 +95,6 @@ try {
         const path = require('path');
 
         app.use(express.static(path.join(__dirname, 'public')));
-        app.use('/node_modules/@xterm/xterm', express.static(path.join(__dirname, 'node_modules/@xterm/xterm')));
 
         app.listen(port, () => {
             console.log(`Slime mold front-end ready at http://localhost:${port}/`);
@@ -184,7 +183,30 @@ CREATE TABLE IF NOT EXISTS users (
         console.log('New client connected');
 
         // For storing miscellaneous metadata about the connection
+        const clientName = (() => {
+            const min = 0x1000;
+            const max = 65535;
+            const span = max - min;
+            let taken = true;
+            let rand = min;
+            const randToName = (randVal) => {
+                return "Caretaker_" + randVal.toString(16);
+            }
+            while (taken) {
+                rand = Math.floor(span * Math.random()) + min;
+                taken = false;
+                for (let i = 0; i < connections.length; i++) {
+                    if (!connections[i]) continue;
+                    if (randToName(rand) === connections[i].name) {
+                        taken = true;
+                        break;
+                    }
+                }
+            }
+            return randToName(rand);
+        })();
         const clientProfile = {
+            name: clientName,
             db: client,
             connection: ws
         };
@@ -196,11 +218,22 @@ CREATE TABLE IF NOT EXISTS users (
         });
 
         ws.on('close', () => {
+            printlnToAll(clientProfile.name + " has left the room!");
             connections.splice(connections.indexOf(clientProfile), 1);
             console.log('Client disconnected');
         });
 
         const openPrints = createPrints(ws);
+        openPrints.println("You are " + clientProfile.name + "!");
+        printlnToAll(clientProfile.name + " has joined the room!");
+        const numberOfOthers = connections.length - 1;
+        const numberOfOthersMsg = (numberOfOthers === 0) ? "You are alone." : ("There are " + numberOfOthers + " other caretakers here.");
+        openPrints.println(`
+You find yourself in a well-lit room, built like a classroom or lab.
+${numberOfOthersMsg}
+In the center of the room is a tinted glass box, with an umbrella-like roof, elevated slightly above the open top of the box.
+Inside the box, you see a pet slime mold.
+`.trim().replace(/[\n\s]+/g, ' '));
         loadMenu('rootMenu', clientProfile, openPrints.print, openPrints.println, true);
     });
 
@@ -217,7 +250,7 @@ CREATE TABLE IF NOT EXISTS users (
         if (tickCount > 12) {
             tickCount -= 12;
             //TODO: Iterate global events, and updates
-            printlnToAll("Tick!");
+            //printlnToAll("Tick!");
         }
     }, 250);
 

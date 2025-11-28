@@ -1,11 +1,24 @@
 <!doctype html>
 <html>
   <head>
-    <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
-    <script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
+    <title>Digital Pet Slime Mold</title>
+    <style>
+      html, .terminal {
+          color: #DDD;
+          background-color: #08080D;
+          font-family: monospace, monospace;
+      }
+
+      .terminal {
+          padding: 8px;
+          max-width: 8in;
+          margin: auto;
+      }
+    </style>
   </head>
   <body>
-    <div id="terminal"></div>
+    <h1>Digital Pet Slime Mold</h1>
+    <div id="terminal" class="terminal"></div>
     <script src="web.js"></script>
   </body>
 </html>
