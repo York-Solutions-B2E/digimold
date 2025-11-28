@@ -20,6 +20,72 @@ Object.keys(signals).forEach((signal) => {
     });
 });
 
+const menuStates = new Map();
+
+class PlayerMenuChoice {
+    constructor(label, func) {
+        this.label = label;
+        this.func = func;
+    }
+}
+
+class PlayerMenuState {
+    constructor(menuBuilder) {
+        this.menuBuilder = menuBuilder;
+        this.choices = [];
+    }
+
+    load(clientProfile, print, println) {
+        this.menuBuilder(this.choices, clientProfile, print, println);
+        for (let i = 0; i < this.choices.length; i++) {
+            println("" + (i+1) + " -> " + this.choices[i].label);
+        }
+    }
+
+    handleKeyPress(keyPress, clientProfile, print, println) {
+        const index = parseInt(keyPress);
+        if (isNaN(index)) {
+            println("Invalid choice: " + keyPress);
+            return;
+        }
+        if (index < 1 || index > this.choices.length) {
+            println("Invalid choice: " + keyPress);
+            return;
+        }
+        const choice = this.choices[index-1];
+        choice.func(clientProfile, print, println);
+    }
+}
+
+function loadMenu(key, clientProfile, print, println, silent=false) {
+    const menu = menuStates.get(key);
+    clientProfile.menuState = menu;
+    if (silent) {
+        menu.load(clientProfile, () => {}, () => {});
+    }
+    else {
+        menu.load(clientProfile, print, println);
+    }
+}
+
+function defMenu(key, menuBuilder) {
+    const menu = new PlayerMenuState(menuBuilder);
+    menuStates.set(key, menu);
+}
+
+defMenu('rootMenu', (choices, clientProfile, print, println) => {
+    choices.length = 0;
+    choices.push(new PlayerMenuChoice("Select A", (clientProfile, print, println) => {
+        println("You chose A!");
+    }));
+    choices.push(new PlayerMenuChoice("Select B", (clientProfile, print, println) => {
+        println("You chose B!");
+    }));
+    choices.push(new PlayerMenuChoice("Select C", (clientProfile, print, println) => {
+        println("You chose C!");
+    }));
+});
+
 try {
     // Web service
     (async () => {
@@ -39,6 +105,8 @@ try {
     console.error(err);
     throwExit();
 }
+
+const connections = [];
 
 // App
 (async () => {
@@ -65,16 +133,37 @@ CREATE TABLE IF NOT EXISTS users (
         console.log('New client connected');
 
         // For storing miscellaneous metadata about the connection
-        const clientProfile = {};
+        const clientProfile = {
+            db: client,
+            connection: ws
+        };
+
+        connections.push(clientProfile);
 
         ws.on('message', async (message) => {
-            const response = await handleClientPacket(client, clientProfile, JSON.parse(message));
-            if (response) ws.send(JSON.stringify(response));
+            /*const response =*/ await handleClientPacket(clientProfile, JSON.parse(message));
+            //if (response) ws.send(JSON.stringify(response));
         });
 
         ws.on('close', () => {
+            connections.splice(connections.indexOf(clientProfile), 1);
             console.log('Client disconnected');
         });
+
+        const print = (msg) => {
+            if (msg === null || msg === undefined) return;
+            ws.send(JSON.stringify({
+                messageType: 'print',
+                content: msg
+            }));
+        }
+
+        const println = (msg) => {
+            if (msg === null || msg === undefined) return;
+            print(msg + '\n');
+        }
+
+        loadMenu('rootMenu', clientProfile, print, println, true);
     });
 
     // Await some exit condition
@@ -87,6 +176,26 @@ CREATE TABLE IF NOT EXISTS users (
     process.exit(0);
 })();
 
-async function handleClientPacket(sql, client, packet) {
-    //
+async function handleClientPacket(client, packet) {
+    const print = (msg) => {
+        if (msg === null || msg === undefined) return;
+        client.connection.send(JSON.stringify({
+            messageType: 'print',
+            content: msg
+        }));
+    }
+
+    const println = (msg) => {
+        if (msg === null || msg === undefined) return;
+        print(msg + '\n');
+    }
+
+    if (packet.messageType === 'requestState') {
+        client.menuState.load(client, print, println);
+    }
+    else {
+        const key = packet.key;
+        if (!key) return;
+        client.menuState.handleKeyPress(key, client, print, println);
+    }
 }
