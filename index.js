@@ -266,13 +266,6 @@ CREATE TABLE IF NOT EXISTS food (
         await addMold(half, item.saturation, item.activity);
     }
 
-    const addFood = async () => {
-        await client.query(
-            "INSERT INTO food (id, mass) VALUES (nextval('mold_seq'), $1)",
-            [FOOD_MASS]
-        );
-    }
-
     const getTotalMoldMass = async (moldList=null) => {
         let total = 0.0;
 
@@ -301,14 +294,29 @@ CREATE TABLE IF NOT EXISTS food (
 
     const getTotalTankMass = async (moldList=null, foodList=null) => {
         if (!moldList) {
-            moldList = getMoldList();
+            moldList = await getMoldList();
         }
 
         if (!foodList) {
-            foodList = getFoodList(moldList);
+            foodList = await getFoodList(moldList);
         }
 
-        return getTotalMoldMass(moldList) + getTotalFoodMass(foodList, moldList);
+        return (await getTotalMoldMass(moldList)) + (await getTotalFoodMass(foodList, moldList));
+    }
+
+    const addFood = async (moldList=null, foodList=null) => {
+        const massRemaining = Math.max(0.0, MAX_MOLD_MASS - (await getTotalTankMass(moldList, foodList)));
+        const amount = Math.min(massRemaining, FOOD_MASS);
+
+        if (amount >= 0.01) {
+            await client.query(
+                "INSERT INTO food (id, mass) VALUES (nextval('mold_seq'), $1)",
+                [amount]
+            );
+            return amount;
+        }
+
+        return 0;
     }
 
     const initState = await client.query("SELECT * FROM molds;");
