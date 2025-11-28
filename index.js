@@ -107,6 +107,57 @@ try {
 }
 
 const connections = [];
+const keyPressQueue = [];
+var tickCount = 0;
+
+function createPrints(connection) {
+    const print = (msg) => {
+        if (msg === null || msg === undefined) return;
+        connection.send(JSON.stringify({
+            messageType: 'print',
+            content: msg
+        }));
+    }
+
+    const println = (msg) => {
+        if (msg === null || msg === undefined) {
+            print('\n');
+            return;
+        }
+        print(msg + '\n');
+    }
+
+    return {
+        print: print,
+        println: println
+    };
+}
+
+function printGenericToAll(msg, ln=false) {
+    for (let i = 0; i < connections.length; i++) {
+        if (!connections[i]) continue;
+        try {
+            const conn = connections[i].connection;
+            const prints = createPrints(conn);
+            if (ln) {
+                prints.println(msg);
+            }
+            else {
+                prints.print(msg);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+}
+
+function printToAll(msg) {
+    printGenericToAll(msg);
+}
+
+function printlnToAll(msg) {
+    printGenericToAll(msg, true);
+}
 
 // App
 (async () => {
@@ -141,8 +192,7 @@ CREATE TABLE IF NOT EXISTS users (
         connections.push(clientProfile);
 
         ws.on('message', async (message) => {
-            /*const response =*/ await handleClientPacket(clientProfile, JSON.parse(message));
-            //if (response) ws.send(JSON.stringify(response));
+            await handleClientPacket(clientProfile, JSON.parse(message));
         });
 
         ws.on('close', () => {
@@ -150,21 +200,26 @@ CREATE TABLE IF NOT EXISTS users (
             console.log('Client disconnected');
         });
 
-        const print = (msg) => {
-            if (msg === null || msg === undefined) return;
-            ws.send(JSON.stringify({
-                messageType: 'print',
-                content: msg
-            }));
-        }
-
-        const println = (msg) => {
-            if (msg === null || msg === undefined) return;
-            print(msg + '\n');
-        }
-
-        loadMenu('rootMenu', clientProfile, print, println, true);
+        const openPrints = createPrints(ws);
+        loadMenu('rootMenu', clientProfile, openPrints.print, openPrints.println, true);
     });
+
+    setInterval(() => {
+        while (keyPressQueue.length > 0) {
+            const keyPress = keyPressQueue.shift();
+            const keyClient = keyPress.client;
+            const key = keyPress.key;
+            const keyPrints = createPrints(keyClient.connection);
+            keyClient.menuState.handleKeyPress(key, keyClient, keyPrints.print, keyPrints.println);
+        }
+
+        tickCount++;
+        if (tickCount > 12) {
+            tickCount -= 12;
+            //TODO: Iterate global events, and updates
+            printlnToAll("Tick!");
+        }
+    }, 250);
 
     // Await some exit condition
     while (!needsToExit) {
@@ -177,25 +232,18 @@ CREATE TABLE IF NOT EXISTS users (
 })();
 
 async function handleClientPacket(client, packet) {
-    const print = (msg) => {
-        if (msg === null || msg === undefined) return;
-        client.connection.send(JSON.stringify({
-            messageType: 'print',
-            content: msg
-        }));
-    }
-
-    const println = (msg) => {
-        if (msg === null || msg === undefined) return;
-        print(msg + '\n');
-    }
+    const packetPrints = createPrints(client.connection);
 
     if (packet.messageType === 'requestState') {
-        client.menuState.load(client, print, println);
+        client.menuState.load(client, packetPrints.print, packetPrints.println);
     }
     else {
         const key = packet.key;
         if (!key) return;
-        client.menuState.handleKeyPress(key, client, print, println);
+        const newEntry = {
+            client: client,
+            key: key
+        };
+        keyPressQueue.push(newEntry);
     }
 }
