@@ -1,5 +1,14 @@
 'use strict';
 
+const ACTIVITY_NONE = 0;
+const ACTIVITY_SEARCHING = 16;
+const ACTIVITY_DANCING = 64;
+const ACTIVITY_EATING = 65536;
+
+const MAX_MOLD_MASS = 1000.0;
+const STARTING_MOLD_MASS = 200.0;
+const FOOD_MASS = 20.0;
+
 var needsToExit = false;
 
 function throwExit() {
@@ -168,13 +177,145 @@ function printlnToAll(msg) {
     console.log("Successfully connected to database!");
 
     await client.query(`
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY,
-    mass DECIMAL(6,2),
-    saturation DECIMAL(5,2),
-    activity INTEGER
+CREATE SEQUENCE IF NOT EXISTS mold_seq START WITH 1 INCREMENT BY 1;
+CREATE TABLE IF NOT EXISTS molds (
+    id BIGINT NOT NULL,
+    mass DECIMAL(6,2) NOT NULL,
+    saturation DECIMAL(5,2) NOT NULL,
+    activity INTEGER NOT NULL
+);
+CREATE SEQUENCE IF NOT EXISTS food_seq START WITH 1 INCREMENT BY 1;
+CREATE TABLE IF NOT EXISTS food (
+    id BIGINT NOT NULL,
+    mass DECIMAL(6,2) NOT NULL,
+    predatorId BIGINT
 );
 `.trim());
+
+    const moldDB2Obj = (dbRes) => {
+        return {
+            id: dbRes.id,
+            mass: Number(dbRes.mass),
+            saturation: Math.max(0.0, Math.min(100.0, Number(dbRes.saturation))),
+            activity: dbRes.activity
+        };
+    }
+    
+    const getMoldList = async () => {
+        const dbResList = (await client.query("SELECT * FROM molds")).rows;
+        const objList = [];
+        for (let i = 0; i < dbResList.length; i++) {
+            objList.push(moldDB2Obj(dbResList[i]));
+        }
+        return objList;
+    }
+
+    const foodDB2Obj = (dbRes, moldList=null) => {
+        let predator = null;
+
+        if (moldList) {
+            for (let i = 0; i < moldList.length; i++) {
+                const moldObj = moldList[i];
+                if (moldObj.id == dbRes.predatorId) {
+                    predator = moldObj;
+                    break;
+                }
+            }
+        }
+        
+        return {
+            id: dbRes.id,
+            mass: Number(dbRes.mass),
+            predator: predator
+        };
+    }
+
+    const getMoldById = async (id) => {
+        const dbRes = (await client.query("SELECT * FROM molds WHERE id=$1", [id])).rows[0];
+        return moldDB2Obj(dbRes);
+    }
+    
+    const getFoodList = async (moldList=null) => {
+        if (!moldList) {
+            moldList = await getMoldList();
+        }
+        const dbResList = (await client.query("SELECT * FROM food")).rows;
+        const objList = [];
+        for (let i = 0; i < dbResList.length; i++) {
+            objList.push(foodDB2Obj(dbResList[i], moldList));
+        }
+        return objList;
+    }
+
+    const getFoodById = async (id, moldList=null) => {
+        const dbRes = (await client.query("SELECT * FROM food WHERE id=$1", [id])).rows[0];
+        return foodDB2Obj(dbRes, moldList);
+    }
+    
+    const addMold = async (mass, saturation, activity) => {
+        await client.query(
+            "INSERT INTO molds (id, mass, saturation, activity) VALUES (nextval('mold_seq'), $1, $2, $3)",
+            [mass, saturation, activity]
+        );
+    }
+    
+    const splitMoldById = async (id) => {
+        const item = await getMoldById(id);
+        const half = item.mass / 2.0;
+        await client.query('UPDATE molds SET mass=$1 WHERE id=$2', [half, id]);
+        await addMold(half, item.saturation, item.activity);
+    }
+
+    const addFood = async () => {
+        await client.query(
+            "INSERT INTO food (id, mass) VALUES (nextval('mold_seq'), $1)",
+            [FOOD_MASS]
+        );
+    }
+
+    const getTotalMoldMass = async (moldList=null) => {
+        let total = 0.0;
+
+        if (!moldList) {
+            moldList = await getMoldList();
+        }
+        
+        for (let i = 0; i < moldList.length; i++) {
+            total += moldList[i].mass;
+        }
+    }
+
+    const getTotalFoodMass = async (foodList=null, moldList=null) => {
+        let total = 0.0;
+
+        if (!foodList) {
+            foodList = await getFoodList(moldList);
+        }
+        
+        for (let i = 0; i < foodList.length; i++) {
+            total += foodList[i].mass;
+        }
+
+        return total;
+    }
+
+    const getTotalTankMass = async (moldList=null, foodList=null) => {
+        if (!moldList) {
+            moldList = getMoldList();
+        }
+
+        if (!foodList) {
+            foodList = getFoodList(moldList);
+        }
+
+        return getTotalMoldMass(moldList) + getTotalFoodMass(foodList, moldList);
+    }
+
+    const initState = await client.query("SELECT * FROM molds;");
+
+    if (initState.rowCount === 0) {
+        await addMold(STARTING_MOLD_MASS, 100, ACTIVITY_NONE);
+    }
 
     const WebSocket = require('ws');
     const wss = new WebSocket.Server({ port: 8080 });
@@ -190,7 +331,7 @@ CREATE TABLE IF NOT EXISTS users (
             let taken = true;
             let rand = min;
             const randToName = (randVal) => {
-                return "Caretaker_" + randVal.toString(16);
+                return "Caretaker_" + randVal.toString(16).toUpperCase();
             }
             while (taken) {
                 rand = Math.floor(span * Math.random()) + min;
@@ -205,9 +346,20 @@ CREATE TABLE IF NOT EXISTS users (
             }
             return randToName(rand);
         })();
+        
         const clientProfile = {
             name: clientName,
-            db: client,
+            db: {
+                getMoldList: getMoldList,
+                getMoldById: getMoldById,
+                getFoodList: getFoodById,
+                addMold: addMold,
+                addFood: addFood,
+                splitMoldById: splitMoldById,
+                getTotalMoldMass: getTotalMoldMass,
+                getTotalFoodMass: getTotalFoodMass,
+                getTotalTankMass: getTotalTankMass
+            },
             connection: ws
         };
 
