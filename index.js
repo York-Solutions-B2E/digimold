@@ -45,9 +45,17 @@ class PlayerMenuState {
     }
 
     load(clientProfile, print, println) {
+        clientProfile.connection.send(JSON.stringify({
+            messageType: 'clearChoices'
+        }));
         this.menuBuilder(this.choices, clientProfile, print, println);
         for (let i = 0; i < this.choices.length; i++) {
-            println("" + (i+1) + " -> " + this.choices[i].label);
+            const label = this.choices[i].label;
+            clientProfile.connection.send(JSON.stringify({
+                messageType: 'choice',
+                index: i,
+                label: label
+            }));
         }
     }
 
@@ -57,11 +65,11 @@ class PlayerMenuState {
             println("Invalid choice: " + keyPress);
             return;
         }
-        if (index < 1 || index > this.choices.length) {
+        if (index < 0 || index >= this.choices.length) {
             println("Invalid choice: " + keyPress);
             return;
         }
-        const choice = this.choices[index-1];
+        const choice = this.choices[index];
         choice.func(clientProfile, print, println);
     }
 }
@@ -432,7 +440,7 @@ async function handleClientPacket(client, packet) {
     }
     else {
         const key = packet.key;
-        if (!key) return;
+        if (key == null) return;
         const newEntry = {
             client: client,
             key: key

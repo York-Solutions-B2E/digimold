@@ -1,6 +1,7 @@
 'use strict';
 
 const term = document.getElementById("terminal");
+const choiceDiv = document.getElementById("choice-div");
 term.append(document.createElement("p"));
 
 function appendToTerminal(content) {
@@ -48,18 +49,27 @@ socket.addEventListener("message", (event) => {
     if (data.messageType === 'print') {
         print(data.content);
     }
-});
+    else if (data.messageType === 'clearChoices') {
+        while (choiceDiv.childElementCount) {
+            choiceDiv.removeChild(choiceDiv.firstChild);
+        }
+    }
+    else if (data.messageType === 'choice') {
+        const button = document.createElement("button");
+        button.className = "term-button";
+        button.textContent = data.label;
+        button.metadata_index = parseInt(data.index);
 
-document.addEventListener("keydown", function(event) {
-    if (!socket) return;
-    const key = event.key;
-    if (
-        key === '0' || key === '1' || key === '2' || key === '3' || key === '4' ||
-            key === '5' || key === '6' || key === '7' || key === '8' || key === '9'
-    ) {
-        socket.send(JSON.stringify({
-            messageType: 'keyPress',
-            key: event.key
-        }));
+        button.addEventListener("click", () => {
+            if (!socket) return;
+            const index = button.metadata_index;
+            socket.send(JSON.stringify({
+                messageType: 'keyPress',
+                key: index
+            }));
+        });
+
+        choiceDiv.appendChild(button);
     }
 });
+
